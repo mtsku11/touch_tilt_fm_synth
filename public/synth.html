@@ -123,7 +123,7 @@
     };
 
     const setupWebSocket = () => {
-      ws = new WebSocket("wss://" + location.host);
+      ws = new WebSocket("wss://touch-tilt-ws.onrender.com");
 
       ws.onopen = () => {
         console.log("WebSocket connected (synth)");
