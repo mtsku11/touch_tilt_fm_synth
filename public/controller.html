@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Touch/Tilt Controller</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      touch-action: none;
+      background: black;
+      color: lime;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    #xy-pad {
+      border: 2px solid lime;
+      width: 90vw;
+      height: 70vh;
+      touch-action: none;
+      background: #111;
+      position: relative;
+    }
+    .dot {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: lime;
+      border-radius: 50%;
+      transform: translate(-10px, -10px);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>🟢 Touch + Tilt Controller</h2>
+  <button onclick="requestTiltPermission()">Enable Tilt</button>
+  <div id="xy-pad"></div>
+
+  <script>
+    const pad = document.getElementById("xy-pad");
+    const socket = new WebSocket("wss://842f-2001-bb6-b407-7272-d2c-5fa9-f28b-60e.ngrok-free.app"); // Update port if needed
+
+    const scale = [62, 65, 67, 69, 72, 74, 78, 79, 81, 84, 86];
+
+    const touches = new Map();
+
+    pad.addEventListener("touchstart", handleTouch);
+    pad.addEventListener("touchmove", handleTouch);
+    pad.addEventListener("touchend", e => {
+      for (let t of e.changedTouches) {
+        const dot = document.getElementById(`dot-${t.identifier}`);
+        if (dot) dot.remove();
+        touches.delete(t.identifier);
+        socket.send(JSON.stringify({ type: "off", id: t.identifier }));
+      }
+    });
+
+    function handleTouch(e) {
+  e.preventDefault();
+  for (let t of e.touches) {
+    const rect = pad.getBoundingClientRect();
+    const x = (t.clientX - rect.left) / rect.width;
+    const y = (t.clientY - rect.top) / rect.height;
+
+    const scaleIndex = Math.floor((1 - y) * scale.length); // PITCH from Y (top = high)
+    const pitch = scale[Math.max(0, Math.min(scaleIndex, scale.length - 1))];
+    const amp = x; // AMP from X
+
+    touches.set(t.identifier, { x, y });
+    socket.send(JSON.stringify({
+      type: "touch",
+      id: t.identifier,
+      pitch,
+      amp
+    }));
+
+    let dot = document.getElementById(`dot-${t.identifier}`);
+    if (!dot) {
+      dot = document.createElement("div");
+      dot.classList.add("dot");
+      dot.id = `dot-${t.identifier}`;
+      pad.appendChild(dot);
+    }
+    dot.style.left = `${x * 100}%`;
+    dot.style.top = `${y * 100}%`;
+  }
+}
+
+
+    // --- Tilt (DeviceOrientation) ---
+    function requestTiltPermission() {
+      if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(response => {
+          if (response === 'granted') {
+            window.addEventListener('deviceorientation', handleTilt);
+          } else {
+            alert("Tilt permission denied");
+          }
+        });
+      } else {
+        window.addEventListener('deviceorientation', handleTilt);
+      }
+    }
+
+    function handleTilt(e) {
+     const beta = e.beta || 0;   // front/back tilt
+     const gamma = e.gamma || 0; // left/right tilt
+
+     const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
+
+     const fmFreqMin = midiToFreq(62);       // D4 ≈ 293.66 Hz
+     const fmFreqMax = midiToFreq(86) * 2;   // ~2349.32 Hz
+
+     //FRONT-BACK tilt (β) controls FM Frequency
+     const betaNorm = (beta + 90) / 180;  // Normalize: -90 → 0, +90 → 1
+     const fmFreq = fmFreqMin + (fmFreqMax - fmFreqMin) * betaNorm;
+
+     // LEFT-RIGHT tilt (γ) controls FM Index
+     const gammaNorm = Math.abs(gamma) / 90;  // 0 (centered) → 1 (extreme)
+     const fmIndex = gammaNorm * 2;           // Max index = 2
+
+
+      socket.send(JSON.stringify({
+        type: "tilt",
+        fmFreq,
+        fmIndex
+      }));
+    }
+  </script>
+</body>
+</html>
