@@ -44,13 +44,15 @@
   <div id="xy-pad"></div>
 
   <script>
+    // get xy pad element
     const pad = document.getElementById("xy-pad");
+    //open websocket connection
     const socket = new WebSocket("wss://touch-tilt-ws.onrender.com");
-
+    // d minor pentatonic
     const scale = [62, 65, 67, 69, 72, 74, 78, 79, 81, 84, 86];
-
+    //track current touches
     const touches = new Map();
-
+    //touch listeners
     pad.addEventListener("touchstart", handleTouch);
     pad.addEventListener("touchmove", handleTouch);
     pad.addEventListener("touchend", e => {
@@ -62,6 +64,7 @@
       }
     });
 
+    //handle touch movement
     function handleTouch(e) {
   e.preventDefault();
   for (let t of e.touches) {
@@ -69,9 +72,9 @@
     const x = (t.clientX - rect.left) / rect.width;
     const y = (t.clientY - rect.top) / rect.height;
 
-    const scaleIndex = Math.floor((1 - y) * scale.length); // PITCH from Y (top = high)
+    const scaleIndex = Math.floor((1 - y) * scale.length); // pitch from Y (top = high)
     const pitch = scale[Math.max(0, Math.min(scaleIndex, scale.length - 1))];
-    const amp = x; // AMP from X
+    const amp = x; // amp from X
 
     touches.set(t.identifier, { x, y });
     socket.send(JSON.stringify({
@@ -81,6 +84,7 @@
       amp
     }));
 
+    //create or update touch dot
     let dot = document.getElementById(`dot-${t.identifier}`);
     if (!dot) {
       dot = document.createElement("div");
@@ -95,6 +99,8 @@
 
 
     // --- Tilt (DeviceOrientation) ---
+
+    // request permission for device tilt
     function requestTiltPermission() {
       if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission().then(response => {
@@ -109,24 +115,25 @@
       }
     }
 
+    //handle device tilt
     function handleTilt(e) {
      const beta = e.beta || 0;   // front/back tilt
      const gamma = e.gamma || 0; // left/right tilt
 
      const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
 
-     const fmFreqMin = midiToFreq(62);       // D4 ≈ 293.66 Hz
-     const fmFreqMax = midiToFreq(86) * 2;   // ~2349.32 Hz
+     const fmFreqMin = midiToFreq(62);       // D4 293.66 Hz
+     const fmFreqMax = midiToFreq(86) * 2;   // 2349.32 Hz
 
-     //FRONT-BACK tilt (β) controls FM Frequency
-     const betaNorm = (beta + 90) / 180;  // Normalize: -90 → 0, +90 → 1
+     //front back tilt controls FM Frequency
+     const betaNorm = (beta + 90) / 180;  // normalize: -90 → 0, +90 → 1
      const fmFreq = fmFreqMin + (fmFreqMax - fmFreqMin) * betaNorm;
 
-     // LEFT-RIGHT tilt (γ) controls FM Index
-     const gammaNorm = Math.abs(gamma) / 90;  // 0 (centered) → 1 (extreme)
-     const fmIndex = gammaNorm * 2;           // Max index = 2
+     // left right tilt controls FM Index
+     const gammaNorm = Math.abs(gamma) / 90;  // 0 centered - 1 extreme
+     const fmIndex = gammaNorm * 2;           // max index 2
 
-
+      //send tilt data
       socket.send(JSON.stringify({
         type: "tilt",
         fmFreq,
