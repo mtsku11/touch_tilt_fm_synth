@@ -34,14 +34,17 @@
   </div>
 
   <script type="module">
+    // csound engine and websocket variables
     let csound;
     let ws;
     let instrumentOn = false;
     let touchTimeout;
     const activeTouches = {};
 
+    // get release time slider
     const releaseSlider = document.getElementById("releaseSlider");
 
+   // update release time when slider moves
    releaseSlider.addEventListener("input", () => {
      const val = parseFloat(releaseSlider.value);
      if (csound) {
@@ -49,7 +52,7 @@
      }
    });
 
-
+    // csound synthesis code
     const code = `
       sr = 48000
       ksmps = 16
@@ -83,8 +86,10 @@
       endin
     `;
 
+    // convert midi note to frequency
     const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
 
+    // assign voice id for touches
     const getVoiceId = (touchId) => {
       if (!(touchId in activeTouches)) {
         const used = Object.values(activeTouches);
@@ -98,6 +103,7 @@
       return activeTouches[touchId];
     };
 
+    // release a voice when touch ends
     const releaseVoice = (touchId) => {
       const voice = activeTouches[touchId];
       if (voice) {
@@ -106,6 +112,7 @@
       }
     };
 
+    // start csound instrument
     const startInstrument = async () => {
       if (!instrumentOn && csound) {
         await csound.inputMessage("i1 0 -1");
@@ -114,6 +121,7 @@
       }
     };
 
+    // stop csound instrument
     const stopInstrument = async () => {
       if (instrumentOn && csound) {
         await csound.inputMessage("i-1 0 1");
@@ -122,6 +130,7 @@
       }
     };
 
+    // setup websocket connection
     const setupWebSocket = () => {
       ws = new WebSocket("wss://touch-tilt-ws.onrender.com");
 
@@ -160,6 +169,7 @@
       };
     };
 
+    // initialize csound engine
     const initCsound = async () => {
       const { Csound } = await import('./js/csound.js');
       csound = await Csound();
@@ -178,6 +188,7 @@
       console.log("Csound initialized");
     };
 
+    // handle start button click
     document.getElementById("startBtn").addEventListener("click", async () => {
       await initCsound();
       setupWebSocket();
