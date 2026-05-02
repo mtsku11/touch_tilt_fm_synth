@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <link rel="icon" href="data:,">
   <title>Synth</title>
   <style>
     body {
@@ -40,6 +41,9 @@
     let instrumentOn = false;
     let touchTimeout;
     const activeTouches = {};
+    const wsUrl = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+      ? `ws://${window.location.host}`
+      : "wss://touch-tilt-ws.onrender.com";
 
     // get release time slider
     const releaseSlider = document.getElementById("releaseSlider");
@@ -58,6 +62,7 @@
       ksmps = 16
       nchnls = 2
       0dbfs = 1
+      giSine ftgen 1, 0, 16384, 10, 1
 
       instr 1
         krelease chnget "releaseTime"
@@ -69,20 +74,25 @@
         kamp3 = portk(chnget:k("amp3"), krelease)
         kfreq3 = portk(chnget:k("freq3"), 0.05)
 
-        kfmFreq = portk(chnget:k("fmFreq"), 0.1)
-        kfmIndex = portk(chnget:k("fmIndex"), 0.1)
+        kfmFreq = portk(limit(chnget:k("fmFreq"), 120, 1200), 0.12)
+        kfmIndex = portk(limit(chnget:k("fmIndex"), 0, 0.9), 0.12)
 
-        amod1 oscili kfmIndex * kfmFreq, kfmFreq
-        acar1 oscili kamp1, kfreq1 + amod1
+        kfreq1 = limit(kfreq1, 80, 1200)
+        kfreq2 = limit(kfreq2, 80, 1200)
+        kfreq3 = limit(kfreq3, 80, 1200)
 
-        amod2 oscili kfmIndex * kfmFreq, kfmFreq
-        acar2 oscili kamp2, kfreq2 + amod2
+        kratio1 = limit(kfmFreq / kfreq1, 0.25, 3)
+        kratio2 = limit(kfmFreq / kfreq2, 0.25, 3)
+        kratio3 = limit(kfmFreq / kfreq3, 0.25, 3)
 
-        amod3 oscili kfmIndex * kfmFreq, kfmFreq
-        acar3 oscili kamp3, kfreq3 + amod3
+        acar1 foscil kamp1 * 0.65, kfreq1, 1, kratio1, kfmIndex, giSine
+        acar2 foscil kamp2 * 0.65, kfreq2, 1, kratio2, kfmIndex, giSine
+        acar3 foscil kamp3 * 0.65, kfreq3, 1, kratio3, kfmIndex, giSine
 
-        aout = acar1 + acar2 + acar3
-        outs aout * 0.3, aout * 0.3
+        aout = (acar1 + acar2 + acar3) * 0.18
+        aout tone aout, 5500
+        aout dcblock2 aout
+        outs aout, aout
       endin
     `;
 
@@ -132,7 +142,7 @@
 
     // setup websocket connection
     const setupWebSocket = () => {
-      ws = new WebSocket("wss://touch-tilt-ws.onrender.com");
+      ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         console.log("WebSocket connected (synth)");
@@ -182,7 +192,7 @@
         await csound.setControlChannel(`freq${i}`, 440);
       }
       await csound.setControlChannel("fmFreq", 300);
-      await csound.setControlChannel("fmIndex", 1.0);
+      await csound.setControlChannel("fmIndex", 0.4);
       await csound.setControlChannel("releaseTime", parseFloat(releaseSlider.value));
 
       console.log("Csound initialized");
@@ -197,4 +207,3 @@
   </script>
 </body>
 </html>
-

@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html>
-<!DOCTYPE html>
-<html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>Touch/Tilt Controller</title>
   <style>
     body {
@@ -47,55 +46,69 @@
     // get xy pad element
     const pad = document.getElementById("xy-pad");
     //open websocket connection
-    const socket = new WebSocket("wss://touch-tilt-ws.onrender.com");
+    const wsUrl = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+      ? `ws://${window.location.host}`
+      : "wss://touch-tilt-ws.onrender.com";
+    const socket = new WebSocket(wsUrl);
     // d minor pentatonic
     const scale = [62, 65, 67, 69, 72, 74, 78, 79, 81, 84, 86];
     //track current touches
     const touches = new Map();
+    let lastTiltSentAt = 0;
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const safeSend = (message) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+      }
+    };
+
     //touch listeners
     pad.addEventListener("touchstart", handleTouch);
     pad.addEventListener("touchmove", handleTouch);
-    pad.addEventListener("touchend", e => {
+    pad.addEventListener("touchend", handleTouchEnd);
+    pad.addEventListener("touchcancel", handleTouchEnd);
+
+    function handleTouchEnd(e) {
       for (let t of e.changedTouches) {
         const dot = document.getElementById(`dot-${t.identifier}`);
         if (dot) dot.remove();
         touches.delete(t.identifier);
-        socket.send(JSON.stringify({ type: "off", id: t.identifier }));
+        safeSend({ type: "off", id: t.identifier });
       }
-    });
+    }
 
     //handle touch movement
     function handleTouch(e) {
-  e.preventDefault();
-  for (let t of e.touches) {
-    const rect = pad.getBoundingClientRect();
-    const x = (t.clientX - rect.left) / rect.width;
-    const y = (t.clientY - rect.top) / rect.height;
+      e.preventDefault();
+      for (let t of e.touches) {
+        const rect = pad.getBoundingClientRect();
+        const x = clamp((t.clientX - rect.left) / rect.width, 0, 1);
+        const y = clamp((t.clientY - rect.top) / rect.height, 0, 1);
 
-    const scaleIndex = Math.floor((1 - y) * scale.length); // pitch from Y (top = high)
-    const pitch = scale[Math.max(0, Math.min(scaleIndex, scale.length - 1))];
-    const amp = x; // amp from X
+        const scaleIndex = Math.floor((1 - y) * scale.length); // pitch from Y (top = high)
+        const pitch = scale[clamp(scaleIndex, 0, scale.length - 1)];
+        const amp = x * 0.75; // keep summed voices below clipping
 
-    touches.set(t.identifier, { x, y });
-    socket.send(JSON.stringify({
-      type: "touch",
-      id: t.identifier,
-      pitch,
-      amp
-    }));
+        touches.set(t.identifier, { x, y });
+        safeSend({
+          type: "touch",
+          id: t.identifier,
+          pitch,
+          amp
+        });
 
-    //create or update touch dot
-    let dot = document.getElementById(`dot-${t.identifier}`);
-    if (!dot) {
-      dot = document.createElement("div");
-      dot.classList.add("dot");
-      dot.id = `dot-${t.identifier}`;
-      pad.appendChild(dot);
+        //create or update touch dot
+        let dot = document.getElementById(`dot-${t.identifier}`);
+        if (!dot) {
+          dot = document.createElement("div");
+          dot.classList.add("dot");
+          dot.id = `dot-${t.identifier}`;
+          pad.appendChild(dot);
+        }
+        dot.style.left = `${x * 100}%`;
+        dot.style.top = `${y * 100}%`;
+      }
     }
-    dot.style.left = `${x * 100}%`;
-    dot.style.top = `${y * 100}%`;
-  }
-}
 
 
     // Tilt DeviceOrientation
@@ -122,23 +135,27 @@
 
      const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
 
-     const fmFreqMin = midiToFreq(62);       // D4 293.66 Hz
-     const fmFreqMax = midiToFreq(86) * 2;   // 2349.32 Hz
+     const fmFreqMin = midiToFreq(50);       // D3 146.83 Hz
+     const fmFreqMax = midiToFreq(79);       // G5 783.99 Hz
 
      //front back tilt controls FM Frequency
-     const betaNorm = (beta + 90) / 180;  // normalize: -90 → 0, +90 → 1
+     const betaNorm = clamp((beta + 60) / 120, 0, 1);
      const fmFreq = fmFreqMin + (fmFreqMax - fmFreqMin) * betaNorm;
 
      // left right tilt controls FM Index
-     const gammaNorm = Math.abs(gamma) / 90;  // 0 centered - 1 extreme
-     const fmIndex = gammaNorm * 2;           // max index 2
+     const gammaNorm = clamp(Math.abs(gamma) / 60, 0, 1);
+     const fmIndex = gammaNorm * 0.9;
+
+      const now = performance.now();
+      if (now - lastTiltSentAt < 33) return;
+      lastTiltSentAt = now;
 
       //send tilt data
-      socket.send(JSON.stringify({
+      safeSend({
         type: "tilt",
         fmFreq,
         fmIndex
-      }));
+      });
     }
   </script>
 </body>

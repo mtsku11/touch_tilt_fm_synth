@@ -10,7 +10,14 @@ wss.on('connection', ws => {
   console.log("Client connected");
 
   ws.on('message', msg => {
-    const data = JSON.parse(msg);
+    let data;
+
+    try {
+      data = JSON.parse(msg);
+    } catch (error) {
+      console.log("Ignoring malformed message:", error.message);
+      return;
+    }
 
     if (data.type === 'touch' || data.type === 'tilt' || data.type === 'off') {
       wss.clients.forEach(client => {
@@ -29,7 +36,7 @@ wss.on('connection', ws => {
   });
 });
 
-app.use(express.static('public'));
+app.use(express.static(__dirname));
 
 server.listen(8080, () => {
   console.log("WebSocket relay + static server running at http://localhost:8080");
